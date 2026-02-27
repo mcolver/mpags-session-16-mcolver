@@ -5,6 +5,7 @@
 #include "ProcessCommandLine.hpp"
 #include "TransformChar.hpp"
 #include "VigenereCipher.hpp"
+#include "CipherFactory.hpp"
 
 #include <cctype>
 #include <fstream>
@@ -48,6 +49,7 @@ int main(int argc, char* argv[])
             << "                   A null key, i.e. no encryption, is used if not supplied\n\n"
             << "  --encrypt        Will use the cipher to encrypt the input text (default behaviour)\n\n"
             << "  --decrypt        Will use the cipher to decrypt the input text\n\n"
+            << " --multi-cipher    Specify how many ciphers to run in sequence\n\n"
             << std::endl;
         // Help requires no further action, so return from main
         // with 0 used to indicate success
@@ -91,24 +93,29 @@ int main(int argc, char* argv[])
 
     std::string outputText;
 
-    switch (settings.cipherType[0]) {
-        case CipherType::Caesar: {
-            // Run the Caesar cipher (using the specified key and encrypt/decrypt flag) on the input text
-            CaesarCipher cipher{settings.cipherKey[0]};
-            outputText = cipher.applyCipher(inputText, settings.cipherMode);
-            break;
+    // Create a collection of all the ciphers to be used
+    std::vector<std::unique_ptr<Cipher>> ciphers;
+    for(size_t i=0; i<settings.cipherKey.size(); i++){
+        ciphers.push_back(CipherFactory::makeCipher(settings.cipherType[i], settings.cipherKey[i]));
+    }
+
+    // If encrypting, work forwards
+    if (settings.cipherMode == CipherMode::Encrypt){
+        outputText = ciphers[0]->applyCipher(inputText, settings.cipherMode);
+
+        for(size_t i=1; i<ciphers.size(); i++){
+            outputText = ciphers[i]->applyCipher(outputText, settings.cipherMode);
         }
-        case CipherType::Playfair: {
-            PlayfairCipher cipher{settings.cipherKey[0]};
-            outputText = cipher.applyCipher(inputText, settings.cipherMode);
-            break;
-        }
-        case CipherType::Vigenere: {
-            VigenereCipher cipher{settings.cipherKey[0]};
-            outputText = cipher.applyCipher(inputText, settings.cipherMode);
-            break;
+    } 
+    // If decrypting, work backwards
+    else if (settings.cipherMode == CipherMode::Decrypt){
+        outputText =  ciphers[ciphers.size()-1]->applyCipher(inputText, settings.cipherMode);
+        
+        for(size_t i=1; i<ciphers.size(); i++){
+            outputText = ciphers[ciphers.size() - (1 + i)]->applyCipher(outputText, settings.cipherMode);
         }
     }
+
 
     // Output the encrypted/decrypted text to stdout/file
     if (!settings.outputFile.empty()) {
